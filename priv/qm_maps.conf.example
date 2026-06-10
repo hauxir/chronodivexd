@@ -1,0 +1,24 @@
+# Quick-match map pool (à la PvPGN's conf/bnmaps.conf). One map per line:
+#
+#   <queue> <map-filename> [maxslots]
+#
+# <queue>        : 1v1 or 2v2
+# <map-filename> : the official RA2/YR map file name the client loads locally
+#                  (quick match doesn't transfer the map, so it must be one the
+#                  players already have). A normal `name.map` is used verbatim.
+# [maxslots]     : optional; overrides the template's slot count for this map.
+#
+# The matchbot picks a random map from the matching queue per game; all other
+# settings (speed, credits, mode, …) come from the captured/template options.
+# Lines starting with `#` and blank lines are ignored.
+#
+# Enable with:  QM_MAPS_FILE=priv/qm_maps.conf  (copy this file and edit names)
+#
+# Replace the examples below with the actual official map filenames you want in
+# rotation (these names are illustrative):
+
+1v1  MP01T.MAP  2
+1v1  MP05T.MAP  2
+
+2v2  MP04T.MAP  4
+2v2  MP08T.MAP  4
