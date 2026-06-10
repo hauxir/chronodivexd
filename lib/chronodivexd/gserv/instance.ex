@@ -18,6 +18,12 @@ defmodule Chronodivexd.Gserv.Instance do
   # is correct, this one only affects feel/latency.
   @net_rate_ms 200
 
+  # Abuse guards: a transferred map is <= 2 MB and a per-turn action payload is
+  # < 64 KB for a legitimate client; anything larger is dropped (also keeps the
+  # 16-bit length field in the relay frame from overflowing).
+  @max_map_bytes 2 * 1024 * 1024
+  @max_action_bytes 65_535
+
   def start_link(game_id, opts), do: GenServer.start_link(__MODULE__, {game_id, opts})
 
   # host attaches with the opts string; joiners attach without.
@@ -116,6 +122,10 @@ defmodule Chronodivexd.Gserv.Instance do
     {:noreply, relay_ready_turns(st)}
   end
 
+  def handle_cast({:actions, _conn, _turn, payload}, st) when byte_size(payload) > @max_action_bytes do
+    {:noreply, st}
+  end
+
   def handle_cast({:actions, conn, turn, payload}, st) do
     case Map.get(st.conns, conn) do
       %{player_id: pid} ->
@@ -146,6 +156,11 @@ defmodule Chronodivexd.Gserv.Instance do
       _ ->
         {:noreply, st}
     end
+  end
+
+  def handle_cast({:put_map, bytes}, st) when byte_size(bytes) > @max_map_bytes do
+    Logger.warning("gserv #{st.game_id}: rejected oversized map upload (#{byte_size(bytes)} bytes)")
+    {:noreply, st}
   end
 
   def handle_cast({:put_map, bytes}, st) do

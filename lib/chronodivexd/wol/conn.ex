@@ -21,6 +21,14 @@ defmodule Chronodivexd.Wol.Conn do
   def init(_opts), do: {:ok, %State{}}
 
   @impl true
+  # WOL commands are short lines; the only large frames on this listener are
+  # gserv map transfers (a different endpoint). Drop oversized WOL frames so a
+  # huge line can't be stored (topic/chat) and fanned out to a channel.
+  @max_frame_bytes 16_384
+
+  def handle_in({data, [opcode: :text]}, state) when byte_size(data) > @max_frame_bytes,
+    do: {:ok, state}
+
   def handle_in({data, [opcode: :text]}, state) do
     state =
       data

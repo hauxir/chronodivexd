@@ -44,10 +44,18 @@ defmodule Chronodivexd.Router do
   end
 
   post "/register" do
-    {:ok, body, conn} = read_body(conn)
+    # Registration is a tiny JSON body; cap the read so a giant body can't be
+    # buffered into memory.
+    {body, conn} =
+      case read_body(conn, length: 8_192) do
+        {:ok, body, conn} -> {body, conn}
+        {:more, _partial, conn} -> {:too_large, conn}
+        {:error, _reason} -> {:too_large, conn}
+      end
+
     conn = cors(conn)
 
-    case Jason.decode(body) do
+    case body != :too_large && Jason.decode(body) do
       {:ok, %{"user" => user, "pass" => pass} = params} ->
         locale = Map.get(params, "locale")
 
