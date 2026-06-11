@@ -20,7 +20,7 @@ defmodule Chronodivexd.Router do
   get "/" do
     if websocket?(conn) do
       conn
-      |> WebSockAdapter.upgrade(Chronodivexd.Wol.Conn, %{}, timeout: 60_000)
+      |> WebSockAdapter.upgrade(Chronodivexd.Wol.Conn, %{origin: origin(conn)}, timeout: 60_000)
       |> halt()
     else
       send_resp(conn, 200, "chronodivexd: WOL endpoint (connect via WebSocket)\n")
@@ -83,6 +83,36 @@ defmodule Chronodivexd.Router do
     conn
     |> get_req_header("upgrade")
     |> Enum.any?(&(String.downcase(&1) == "websocket"))
+  end
+
+  # Host/scheme the client actually used to reach us, so gserv (same listener)
+  # can be advertised in STARTG without configuration. Honors the standard
+  # reverse-proxy forwarding headers so TLS termination is picked up too.
+  defp origin(conn) do
+    %{host: forwarded_host(conn), scheme: forwarded_scheme(conn)}
+  end
+
+  defp forwarded_host(conn) do
+    case first_header_value(conn, "x-forwarded-host") do
+      nil -> first_header_value(conn, "host")
+      host -> host
+    end
+  end
+
+  defp forwarded_scheme(conn) do
+    case first_header_value(conn, "x-forwarded-proto") do
+      proto when proto in ["https", "wss"] -> "wss"
+      proto when is_binary(proto) -> "ws"
+      nil -> if conn.scheme == :https, do: "wss", else: "ws"
+    end
+  end
+
+  # First value of a (possibly comma-joined) header, trimmed, or nil.
+  defp first_header_value(conn, name) do
+    case get_req_header(conn, name) do
+      [value | _] -> value |> String.split(",") |> hd() |> String.trim()
+      [] -> nil
+    end
   end
 
   defp cors(conn) do

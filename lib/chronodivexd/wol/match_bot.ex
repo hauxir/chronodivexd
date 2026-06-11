@@ -22,6 +22,7 @@ defmodule Chronodivexd.Wol.MatchBot do
   require Logger
 
   alias Chronodivexd.Gserv.Registry
+  alias Chronodivexd.Wol.GservUrl
 
   @bot_name "matchbot"
   @countdown 5
@@ -45,8 +46,8 @@ defmodule Chronodivexd.Wol.MatchBot do
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
   @doc "A whisper from `nick` (pid) to the matchbot; `queue_id` = the #Lob id they're in (or nil)."
-  def message(pid, nick, text, queue_id),
-    do: GenServer.cast(__MODULE__, {:message, pid, nick, text, queue_id})
+  def message(pid, nick, text, queue_id, origin \\ %{}),
+    do: GenServer.cast(__MODULE__, {:message, pid, nick, text, queue_id, origin})
 
   @doc "Player left (parted a qm channel or disconnected) — drop from all queues."
   def player_left(pid), do: GenServer.cast(__MODULE__, {:player_left, pid})
@@ -68,8 +69,8 @@ defmodule Chronodivexd.Wol.MatchBot do
   end
 
   @impl true
-  def handle_cast({:message, pid, nick, text, queue_id}, st) do
-    {:noreply, handle_message(String.trim(text), pid, nick, queue_id, st)}
+  def handle_cast({:message, pid, nick, text, queue_id, origin}, st) do
+    {:noreply, handle_message(String.trim(text), pid, nick, queue_id, origin, st)}
   end
 
   def handle_cast({:player_left, pid}, st) do
@@ -83,9 +84,16 @@ defmodule Chronodivexd.Wol.MatchBot do
 
   @impl true
   def handle_info({:launch, game_id, ts, players}, st) do
-    scheme = Application.fetch_env!(:chronodivexd, :gserv_scheme)
-    host = Application.fetch_env!(:chronodivexd, :gserv_host)
-    line = ":#{srv()} STARTG qm:#{scheme}://#{host}/gserv :#{game_id} #{ts}"
+    # Matched players must all reach the *same* gserv instance, so we advertise a
+    # single URL — derived from one player's WOL origin (config GSERV_HOST still
+    # overrides). Fine when they share a reachable host (same machine / LAN);
+    # cross-network quick match needs an explicit public GSERV_HOST.
+    origin = case players do
+      [%{origin: o} | _] -> o
+      _ -> %{}
+    end
+
+    line = ":#{srv()} STARTG qm:#{GservUrl.build(origin)} :#{game_id} #{ts}"
     for p <- players, do: send(p.pid, {:wol_out, line})
     Logger.info("MatchBot: launched #{game_id} for #{Enum.map_join(players, ", ", & &1.nick)}")
     {:noreply, st}
@@ -95,28 +103,28 @@ defmodule Chronodivexd.Wol.MatchBot do
 
   # ----- message handling -----
 
-  defp handle_message(@req_list_queues, pid, nick, _queue_id, st) do
+  defp handle_message(@req_list_queues, pid, nick, _queue_id, _origin, st) do
     available = Enum.filter(@queue_order, &available?(st, &1))
     whisper(pid, nick, "#{@rpl_queue_list} #{Enum.join(available, ",")}")
     st
   end
 
-  defp handle_message(@req_stats, pid, nick, queue_id, st) do
+  defp handle_message(@req_stats, pid, nick, queue_id, _origin, st) do
     type = queue_type(queue_id)
     n = if type, do: length(Map.get(st.queues, type, [])), else: 0
     whisper(pid, nick, "#{@rpl_stats} #{n},-1")
     st
   end
 
-  defp handle_message(@req_match <> " " <> rest, pid, nick, queue_id, st),
-    do: do_match(pid, nick, queue_id, rest, st)
+  defp handle_message(@req_match <> " " <> rest, pid, nick, queue_id, origin, st),
+    do: do_match(pid, nick, queue_id, rest, origin, st)
 
-  defp handle_message(@req_match, pid, nick, queue_id, st),
-    do: do_match(pid, nick, queue_id, "", st)
+  defp handle_message(@req_match, pid, nick, queue_id, origin, st),
+    do: do_match(pid, nick, queue_id, "", origin, st)
 
-  defp handle_message(_other, _pid, _nick, _queue_id, st), do: st
+  defp handle_message(_other, _pid, _nick, _queue_id, _origin, st), do: st
 
-  defp do_match(pid, nick, queue_id, tags, st) do
+  defp do_match(pid, nick, queue_id, tags, origin, st) do
     type = queue_type(queue_id)
 
     cond do
@@ -130,7 +138,7 @@ defmodule Chronodivexd.Wol.MatchBot do
 
       true ->
         whisper(pid, nick, @rpl_working)
-        player = %{pid: pid, nick: nick, country: parse_country(tags)}
+        player = %{pid: pid, nick: nick, country: parse_country(tags), origin: origin}
         st = update_in(st.queues[type], &(&1 ++ [player]))
         maybe_pair(type, st)
     end

@@ -4,12 +4,16 @@ config :chronodivexd,
   ecto_repos: [Chronodivexd.Repo],
   # Port the Bandit listener binds to (HTTP /register + WOL `/` + gserv `/gserv`).
   port: 4000,
-  # Host[:port] the client should be told to reach gserv on (handed out in
-  # STARTG). Must be reachable from the browser. Behind a TLS reverse proxy set
-  # this to your public host (e.g. "cd.example.com") and gserv_scheme to "wss".
-  gserv_host: "localhost:4000",
-  # ws or wss — the scheme of the STARTG gserv URL. Use wss behind TLS/Caddy.
-  gserv_scheme: "ws",
+  # Host[:port] the client is told to reach gserv on (handed out in STARTG). Left
+  # unset so it auto-derives from the Host header of each client's WOL connection
+  # — gserv lives on the same listener, so "the host you reached us on" is correct
+  # for local/LAN play with no config. Set explicitly (env GSERV_HOST, e.g.
+  # "cd.example.com") only when clients must reach gserv at a fixed public name
+  # that differs from their WOL Host header.
+  gserv_host: nil,
+  # ws or wss — scheme of the STARTG gserv URL. Unset → derived from the WOL
+  # request (X-Forwarded-Proto / TLS). Set "wss" (env GSERV_SCHEME) to force it.
+  gserv_scheme: nil,
   # WOL/gserv server name token used as the IRC line prefix (`:cdserv ...`).
   server_name: "cdserv",
   # Optional fallback game-options string for quick match before any custom game

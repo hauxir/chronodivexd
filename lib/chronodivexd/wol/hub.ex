@@ -12,7 +12,7 @@ defmodule Chronodivexd.Wol.Hub do
   require Logger
 
   alias Chronodivexd.Irc
-  alias Chronodivexd.Wol.Codes
+  alias Chronodivexd.Wol.{Codes, GservUrl}
 
   @op_prefix "@"
   # `passFlag` value the client treats as "password locked".
@@ -22,7 +22,8 @@ defmodule Chronodivexd.Wol.Hub do
 
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
-  def login(nick, pid, fresh?), do: GenServer.call(__MODULE__, {:login, nick, pid, fresh?})
+  def login(nick, pid, fresh?, origin \\ %{}),
+    do: GenServer.call(__MODULE__, {:login, nick, pid, fresh?, origin})
   def disconnect(pid), do: GenServer.cast(__MODULE__, {:disconnect, pid})
   def set_ping(pid, ping), do: GenServer.cast(__MODULE__, {:set_ping, pid, ping})
 
@@ -61,7 +62,7 @@ defmodule Chronodivexd.Wol.Hub do
   end
 
   @impl true
-  def handle_call({:login, nick, pid, fresh?}, _from, st) do
+  def handle_call({:login, nick, pid, fresh?, origin}, _from, st) do
     key = String.downcase(nick)
 
     st =
@@ -75,7 +76,7 @@ defmodule Chronodivexd.Wol.Hub do
       end
 
     Process.monitor(pid)
-    session = %{nick: nick, pid: pid, ping: 0, fresh: fresh?}
+    session = %{nick: nick, pid: pid, ping: 0, fresh: fresh?, origin: origin}
     st = %{st | sessions: Map.put(st.sessions, key, session), pids: Map.put(st.pids, pid, key)}
     {:reply, :ok, st}
   end
@@ -274,7 +275,7 @@ defmodule Chronodivexd.Wol.Hub do
           # Quick-match: whispers to the virtual "matchbot" drive matchmaking.
           # The queue is inferred from which `#Lob <id> 0` channel they're in.
           String.downcase(target) == Chronodivexd.Wol.MatchBot.bot_name() ->
-            Chronodivexd.Wol.MatchBot.message(pid, sess.nick, text, qm_channel_id(st, sess.nick))
+            Chronodivexd.Wol.MatchBot.message(pid, sess.nick, text, qm_channel_id(st, sess.nick), sess.origin)
 
           true ->
             deliver_to_nick(st, target, ":#{userhost(sess.nick)} PRIVMSG #{target} :#{text}")
@@ -302,8 +303,7 @@ defmodule Chronodivexd.Wol.Hub do
          true <- operator?(ch, sess.nick) do
       game_id = gen_game_id()
       ts = System.system_time(:millisecond)
-      scheme = Application.fetch_env!(:chronodivexd, :gserv_scheme)
-      gserv_url = "#{scheme}://#{Application.fetch_env!(:chronodivexd, :gserv_host)}/gserv"
+      gserv_url = GservUrl.build(sess.origin)
       broadcast(ch, ":#{srv()} STARTG #{Irc.escape(chan)}:#{gserv_url} :#{game_id} #{ts}")
       Logger.info("Starting game #{inspect(chan)} as instance #{game_id}")
       {:reply, :ok, st}

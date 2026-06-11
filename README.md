@@ -127,8 +127,12 @@ mix ecto.create && mix ecto.migrate     # one-time: create priv/chronodivexd.db
 mix run --no-halt                         # listens on http://localhost:4000
 ```
 
-Environment overrides: `PORT`, `GSERV_HOST` (host:port advertised to clients in
-`STARTG`, default `localhost:4000`), `DATABASE_PATH`.
+Environment overrides: `PORT`, `DATABASE_PATH`, and `GSERV_HOST` / `GSERV_SCHEME`
+(host:port and `ws`/`wss` advertised to clients in `STARTG`). gserv runs on this
+same listener, so by default the URL is **auto-derived from the Host the client
+reached us on** (honoring `X-Forwarded-Host`/`-Proto`) — no config needed for
+local/LAN play. Only set `GSERV_HOST`/`GSERV_SCHEME` when clients must reach
+gserv at a fixed public name that differs from their WOL `Host` header.
 
 Point a client at it by editing its `servers.ini` to add a region whose
 `wolUrl` is this server's WebSocket URL and `apiRegUrl` its `/register` endpoint
@@ -145,7 +149,9 @@ apiRegUrl="http://localhost:4000/register"
 ```
 
 Then run the client and pick that region. Behind a TLS reverse proxy, use
-`wss://`/`https://` and set `GSERV_SCHEME=wss` + `GSERV_HOST=<host>`.
+`wss://`/`https://`; if the proxy sets `X-Forwarded-Host`/`X-Forwarded-Proto`
+the gserv URL follows automatically, otherwise pin it with `GSERV_HOST=<host>`
++ `GSERV_SCHEME=wss`.
 
 > Actually *playing* a match still requires your own Red Alert 2 + Yuri's Revenge
 > `.mix` data files (the client asks for them on first run). The server itself

@@ -14,11 +14,13 @@ defmodule Chronodivexd.Wol.Conn do
 
   defmodule State do
     @moduledoc false
-    defstruct nick: nil, pending_nick: nil, pending_pass: nil, locale: "en-US"
+    # `origin` = %{host, scheme} the client reached us on, captured at the WS
+    # upgrade and used to advertise gserv (same listener) in STARTG.
+    defstruct nick: nil, pending_nick: nil, pending_pass: nil, locale: "en-US", origin: %{}
   end
 
   @impl true
-  def init(_opts), do: {:ok, %State{}}
+  def init(opts), do: {:ok, %State{origin: Map.get(opts, :origin, %{})}}
 
   @impl true
   # WOL commands are short lines; the only large frames on this listener are
@@ -119,7 +121,7 @@ defmodule Chronodivexd.Wol.Conn do
   defp handle_login(state) do
     case Accounts.verify(state.pending_nick, state.pending_pass || "") do
       {:ok, nick} ->
-        Hub.login(nick, self(), false)
+        Hub.login(nick, self(), false, state.origin)
         send_motd(nick)
         Logger.info("WOL login: #{nick}")
         %{state | nick: nick, pending_pass: nil}
