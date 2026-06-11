@@ -1,0 +1,21 @@
+# Build artefacts & deps are rebuilt inside the image.
+_build/
+deps/
+cover/
+doc/
+.fetch
+*.ez
+erl_crash.dump
+
+# Local SQLite databases must never leak into the image.
+priv/*.db
+priv/*.db-*
+
+# VCS / editor / CI noise.
+.git/
+.github/
+.elixir_ls/
+.gitignore
+README.md
+Dockerfile
+.dockerignore
